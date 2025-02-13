@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:bidgrab/config.dart';
 import 'package:bidgrab/controllers/auction_controller.dart';
 import 'package:bidgrab/controllers/category_controller.dart';
 import 'package:bidgrab/models/category.dart';
@@ -10,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:lottie/lottie.dart';
 import 'package:http/http.dart' as http;
+import 'package:geolocator/geolocator.dart';
 
 class CreateNewAuction extends StatefulWidget {
   const CreateNewAuction({super.key});
@@ -27,15 +29,16 @@ class _CreateNewAuctionState extends State<CreateNewAuction> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _startingPriceController =
-  TextEditingController();
+      TextEditingController();
   final TextEditingController _brandController = TextEditingController();
   final TextEditingController _modelController = TextEditingController();
   final TextEditingController _sizeController = TextEditingController();
   final TextEditingController _colorController = TextEditingController();
   final TextEditingController _materialController = TextEditingController();
   final TextEditingController _dimensionsController = TextEditingController();
+  final TextEditingController _locationController = TextEditingController();
   final TextEditingController _manufacturedYearController =
-  TextEditingController();
+      TextEditingController();
   final TextEditingController _featuresController = TextEditingController();
   String selectedCategoryId = "";
   String condition = "";
@@ -60,24 +63,24 @@ class _CreateNewAuctionState extends State<CreateNewAuction> {
     if (images.length >= 5) {
       showDialog(
         context: context,
-        builder: (context) =>
-            AlertDialog(
-              title: const Text("Maximum number of images can upload is 5"),
-              content: Lottie.asset("images/lottie/robot.json"),
-              actions: [
-                FilledButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                  },
-                  child: const Text("Okay"),
-                )
-              ],
-            ),
+        builder: (context) => AlertDialog(
+          title: const Text("Maximum number of images can upload is 5"),
+          content: Lottie.asset("images/lottie/robot.json"),
+          actions: [
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text("Okay"),
+            )
+          ],
+        ),
       );
       return;
     }
     final uploadedPhoto =
-    await ImagePicker().pickImage(source: ImageSource.camera);
+        await ImagePicker().pickImage(source: ImageSource.camera);
+
     setState(() {
       if (uploadedPhoto != null) {
         images.add(File(uploadedPhoto.path));
@@ -87,7 +90,7 @@ class _CreateNewAuctionState extends State<CreateNewAuction> {
 
   Future<void> _uploadPhoto() async {
     final uploadedPhoto =
-    await ImagePicker().pickImage(source: ImageSource.gallery);
+        await ImagePicker().pickImage(source: ImageSource.gallery);
     setState(() {
       if (uploadedPhoto != null) {
         images.add(File(uploadedPhoto.path));
@@ -105,6 +108,7 @@ class _CreateNewAuctionState extends State<CreateNewAuction> {
       color: _colorController.text,
       model: _modelController.text,
       size: _sizeController.text,
+      location: _locationController.text,
     );
     await AuctionController.create(
       title: _titleController.text,
@@ -121,26 +125,25 @@ class _CreateNewAuctionState extends State<CreateNewAuction> {
       var decoded = jsonDecode(response.body);
       showDialog(
         context: context,
-        builder: (context) =>
-            AlertDialog(
-              title: Text(decoded["message"]),
-              content: Lottie.asset(
-                response.statusCode != 201
-                    ? "images/lottie/robot.json"
-                    : "images/lottie/highfive.json",
-              ),
-              actions: [
-                FilledButton(
-                  onPressed: () {
-                    Navigator.pop(context);
-                    if (response.statusCode != 201) {
-                      Navigator.pushNamed(context, Profile.id);
-                    }
-                  },
-                  child: const Text("Okay"),
-                )
-              ],
-            ),
+        builder: (context) => AlertDialog(
+          title: Text(decoded["message"]),
+          content: Lottie.asset(
+            response.statusCode != 201
+                ? "images/lottie/robot.json"
+                : "images/lottie/highfive.json",
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(context);
+                if (response.statusCode != 201) {
+                  Navigator.pushNamed(context, Profile.id);
+                }
+              },
+              child: const Text("Okay"),
+            )
+          ],
+        ),
       );
     });
   }
@@ -154,6 +157,52 @@ class _CreateNewAuctionState extends State<CreateNewAuction> {
 
   @override
   Widget build(BuildContext context) {
+
+    Future<void> _getLocation() async {
+      bool serviceEnabled;
+      LocationPermission permission;
+
+      // Check if location services are enabled
+      serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        return Future.error('Location services are disabled.');
+      }
+
+      // Check for location permissions
+      permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          return Future.error('Location permissions are denied');
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        return Future.error(
+            'Location permissions are permanently denied, we cannot request permissions.');
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+
+      final response = await http.get(Uri.parse(
+          'https://maps.googleapis.com/maps/api/geocode/json?latlng=${position.latitude},${position.longitude}&key=${Config.GOOGLE_API_KEY}'));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['results'].isNotEmpty) {
+          setState(() {
+            print(data['results'][0]['formatted_address']);
+            _locationController.text = data['results'][0]['formatted_address'];
+          });
+        } else {
+          throw Exception('No address found');
+        }
+      } else {
+        throw Exception('Failed to get address');
+      }
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("Create new auction"),
@@ -214,13 +263,12 @@ class _CreateNewAuctionState extends State<CreateNewAuction> {
                   spacing: 8,
                   children: images
                       .map(
-                        (image) =>
-                        Image.file(
+                        (image) => Image.file(
                           image,
                           width: 64,
                           height: 64,
                         ),
-                  )
+                      )
                       .toList()),
               const SizedBox(height: 16),
               const Text(
@@ -454,13 +502,28 @@ class _CreateNewAuctionState extends State<CreateNewAuction> {
                 controller: _featuresController,
               ),
               const SizedBox(height: 16),
+              TextField(
+                decoration: const InputDecoration(
+                  contentPadding: EdgeInsets.all(16),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.all(Radius.circular(16)),
+                  ),
+                  label: Text("Location"),
+                ),
+                controller: _locationController,
+              ),
+              TextButton(
+                onPressed: () {
+                  _getLocation();
+                },
+                child: const Text("Get location"),
+              ),
+              const SizedBox(height: 16),
               SizedBox(
                 width:
-                MediaQuery
-                    .of(context)
-                    .orientation == Orientation.portrait
-                    ? double.infinity
-                    : 320,
+                    MediaQuery.of(context).orientation == Orientation.portrait
+                        ? double.infinity
+                        : 320,
                 child: FilledButton(
                   onPressed: () {
                     _submit();

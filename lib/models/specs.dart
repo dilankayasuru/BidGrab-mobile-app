@@ -7,6 +7,7 @@ class Specs {
   final String? color;
   final String? model;
   final String? size;
+  final String? location;
 
   const Specs({
     this.brand,
@@ -17,6 +18,7 @@ class Specs {
     this.color,
     this.model,
     this.size,
+    this.location,
   });
 
   factory Specs.fromJson(Map<String, dynamic> json) {
@@ -29,6 +31,7 @@ class Specs {
       color: json['color'] as String?,
       model: json['model'] as String?,
       size: json['size'] as String?,
+      location: json['location'] as String?,
     );
   }
 
@@ -42,6 +45,7 @@ class Specs {
       'color': color,
       'model': model,
       'size': size,
+      'location': location,
     };
   }
 }
